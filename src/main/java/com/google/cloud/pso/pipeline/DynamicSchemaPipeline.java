@@ -40,6 +40,7 @@ import org.apache.beam.sdk.transforms.windowing.FixedWindows;
 import org.apache.beam.sdk.transforms.windowing.Window;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionView;
+import org.apache.beam.sdk.values.TupleTagList;
 import org.joda.time.Duration;
 
 /** TODO: Document. */
@@ -90,9 +91,18 @@ public class DynamicSchemaPipeline {
         pipeline
             .apply(
                 "ReadAvroMessages",
-                PubsubIO.readMessagesWithAttributes().fromSubscription(options.getSubscription()))
-            .apply("PubsubAvroToTableRow", ParDo.of(new PubsubAvroToTableRow()))
+                PubsubIO
+                    .readMessagesWithAttributes()
+                    .fromSubscription(options.getSubscription()))
+            .apply("PubsubAvroToTableRow",
+                ParDo
+                    .of(new PubsubAvroToTableRow())
+                    .withOutputTags(
+                        PubsubAvroToTableRow.MAIN_OUT,
+                        TupleTagList.of(PubsubAvroToTableRow.DEADLETTER_OUT)))
+            .get(PubsubAvroToTableRow.MAIN_OUT)
             .apply("1mWindow", Window.into(FixedWindows.of(Duration.standardMinutes(1L))));
+
 
     WriteResult writeResult =
         incomingRecords.apply(

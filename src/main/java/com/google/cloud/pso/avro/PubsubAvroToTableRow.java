@@ -27,6 +27,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumReader;
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubMessage;
 import org.apache.beam.sdk.transforms.DoFn;
+import org.apache.beam.sdk.values.TupleTag;
 
 /**
  * A {@link DoFn} that converts a {@link PubsubMessage} with an Avro payload to a {@link
@@ -39,8 +40,11 @@ import org.apache.beam.sdk.transforms.DoFn;
  */
 public class PubsubAvroToTableRow extends DoFn<PubsubMessage, TableRowWithSchema> {
 
+  public static final TupleTag<TableRowWithSchema> MAIN_OUT = new TupleTag<TableRowWithSchema>(){};
+  public static final TupleTag<PubsubMessage> DEADLETTER_OUT = new TupleTag<PubsubMessage>(){};
+
   @ProcessElement
-  public void processElement(ProcessContext context) {
+  void processElement(ProcessContext context) {
 
     PubsubMessage message = context.element();
 
@@ -56,6 +60,7 @@ public class PubsubAvroToTableRow extends DoFn<PubsubMessage, TableRowWithSchema
         TableRow tableRow = BigQueryAvroUtils.getTableRow(record);
 
         context.output(
+            MAIN_OUT,
             TableRowWithSchema.newBuilder()
                 .setTableName(tableName)
                 .setTableSchema(tableSchema)
@@ -63,7 +68,8 @@ public class PubsubAvroToTableRow extends DoFn<PubsubMessage, TableRowWithSchema
                 .build());
       }
     } catch (Exception e) {
-      // TODO: Use a dead-letter strategy for records which fail to parse.
+      // Redirect all failed records to the dead-letter.
+      context.output(DEADLETTER_OUT, message);
     }
   }
 }
