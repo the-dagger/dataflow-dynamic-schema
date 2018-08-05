@@ -16,6 +16,8 @@
 
 package com.google.cloud.pso.bigquery;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 import com.google.api.services.bigquery.model.TableRow;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auto.value.AutoValue;
@@ -32,9 +34,8 @@ import com.google.cloud.bigquery.TableId;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import java.io.IOException;
-import java.math.BigDecimal;
-import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import javax.annotation.Nullable;
 import org.apache.beam.sdk.transforms.DoFn;
@@ -43,8 +44,8 @@ import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.Values;
 import org.apache.beam.sdk.transforms.WithKeys;
-import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
+import org.apache.beam.sdk.values.PCollectionView;
 
 /**
  * The {@link BigQuerySchemaMutator} class is a {@link PTransform} which given a PCollection of
@@ -53,44 +54,87 @@ import org.apache.beam.sdk.values.PCollection;
  */
 @AutoValue
 public abstract class BigQuerySchemaMutator
-    extends PTransform<PCollection<TableRow>, PCollection<TableRow>> {
+    extends PTransform<PCollection<TableRow>, PCollection<TableRowWithSchema>> {
 
   @Nullable
   abstract BigQuery getBigQueryService();
 
+  abstract PCollectionView<Map<Integer, TableRowWithSchema>> getIncomingRecordsView();
+
   abstract Builder toBuilder();
 
+  /** The builder for the {@link BigQuerySchemaMutator} class. */
   @AutoValue.Builder
   public abstract static class Builder {
     abstract Builder setBigQueryService(BigQuery bigQuery);
+
+    abstract Builder setIncomingRecordsView(
+        PCollectionView<Map<Integer, TableRowWithSchema>> incomingRecordsView);
+
     abstract BigQuerySchemaMutator build();
   }
 
-  public static BigQuerySchemaMutator of() {
-    return new com.google.cloud.pso.bigquery.AutoValue_BigQuerySchemaMutator.Builder().build();
+  public static BigQuerySchemaMutator mutateWithSchema(
+      PCollectionView<Map<Integer, TableRowWithSchema>> incomingRecordsView) {
+    return new com.google.cloud.pso.bigquery.AutoValue_BigQuerySchemaMutator.Builder()
+        .setIncomingRecordsView(incomingRecordsView)
+        .build();
   }
 
+  /**
+   * @param bigQuery
+   * @return
+   */
   public BigQuerySchemaMutator withBigQueryService(BigQuery bigQuery) {
     return toBuilder().setBigQueryService(bigQuery).build();
   }
 
   @Override
-  public PCollection<TableRow> expand(PCollection<TableRow> input) {
+  public PCollection<TableRowWithSchema> expand(PCollection<TableRow> input) {
 
     // Here we'll key every failed record by the same key so we can batch the mutations being made
     // to BigQuery. The batch of records will then be passed to a schema mutator so the schema of
     // those records can be updated.
-    input
-        .apply("KeyRecords", WithKeys.of("failed-records"))
-        .apply("GroupByKey", GroupIntoBatches.ofSize(1000L))
-        .apply("RemoveKey", Values.create())
-        .apply("MutateSchema", ParDo.of(new TableRowSchemaMutator(getBigQueryService())));
+    PCollection<TableRowWithSchema> mutatedRecords =
+        input
+            .apply(
+                "FailedInsertToTableRowWithSchema",
+                ParDo.of(new FailedInsertToTableRowWithSchema(getIncomingRecordsView()))
+                    .withSideInputs(getIncomingRecordsView()))
+            .apply("KeyRecords", WithKeys.of("failed-record-batch"))
+            .apply("GroupInBatches", GroupIntoBatches.ofSize(1000L))
+            .apply("RemoveKey", Values.create())
+            .apply("MutateSchema", ParDo.of(new TableRowSchemaMutator()));
 
-    return input;
+    return mutatedRecords;
   }
 
   /** */
-  private class TableRowSchemaMutator extends DoFn<Iterable<TableRow>, TableRow> {
+  public static class FailedInsertToTableRowWithSchema extends DoFn<TableRow, TableRowWithSchema> {
+
+    private PCollectionView<Map<Integer, TableRowWithSchema>> incomingRecordsView;
+
+    public FailedInsertToTableRowWithSchema(
+        PCollectionView<Map<Integer, TableRowWithSchema>> incomingRecordsView) {
+      this.incomingRecordsView = incomingRecordsView;
+    }
+
+    @ProcessElement
+    public void processElement(ProcessContext context) {
+      TableRow failedInsert = context.element();
+
+      Map<Integer, TableRowWithSchema> schemaMap = context.sideInput(incomingRecordsView);
+      TableRowWithSchema tableRowWithSchema = schemaMap.get(failedInsert.hashCode());
+
+      checkNotNull(tableRowWithSchema, "Unable to retrieve schema for failed insert.");
+
+      context.output(tableRowWithSchema);
+    }
+  }
+
+  /** */
+  public static class TableRowSchemaMutator
+      extends DoFn<Iterable<TableRowWithSchema>, TableRowWithSchema> {
 
     private BigQuery bigQuery;
 
@@ -113,14 +157,18 @@ public abstract class BigQuerySchemaMutator
 
     @ProcessElement
     public void processElement(ProcessContext context) {
-      Iterable<TableRow> mutatedRows = context.element();
+      Iterable<TableRowWithSchema> mutatedRows = context.element();
 
       // Retrieve the table schema
       TableId tableId = TableId.of("data-analytics-pocs", "demo", "dynamic_schema");
       Table table = bigQuery.getTable(tableId);
 
+      checkNotNull(table, "Failed to find table to mutate: " + tableId.toString());
+
       TableDefinition tableDef = table.getDefinition();
       Schema schema = tableDef.getSchema();
+
+      checkNotNull(table, "Unable to retrieve schema for table: " + tableId.toString());
 
       // Compare the records to the known table schema
       Set<Field> additionalFields = getAdditionalFields(schema, mutatedRows);
@@ -144,57 +192,28 @@ public abstract class BigQuerySchemaMutator
      * @param mutatedRows The records which have mutated.
      * @return A unique set of fields which have been added to the schema.
      */
-    private Set<Field> getAdditionalFields(Schema schema, Iterable<TableRow> mutatedRows) {
+    private Set<Field> getAdditionalFields(
+        Schema schema, Iterable<TableRowWithSchema> mutatedRows) {
 
       // Compare the existingSchema to the mutated rows
       FieldList fieldList = schema.getFields();
-      Set<Field> addedFields = Sets.newHashSet();
+      Set<Field> additionalFields = Sets.newHashSet();
 
       mutatedRows.forEach(
           row ->
-              row.keySet()
+              row.getTableSchema()
+                  .getFields()
                   .stream()
-                  .map(fieldName -> KV.of(fieldName, row.get(fieldName)))
-                  .filter(field -> !isExistingField(fieldList, field.getKey()))
+                  .filter(field -> !isExistingField(fieldList, field.getName()))
                   .map(
                       field ->
-                          Field.of(field.getKey(), getLegacyFieldType(field.getValue()))
+                          Field.of(field.getName(), LegacySQLTypeName.valueOf(field.getType()))
                               .toBuilder()
                               .setMode(Mode.NULLABLE)
                               .build())
-                  .forEach(addedFields::add));
+                  .forEach(additionalFields::add));
 
-      return addedFields;
-    }
-
-    /**
-     * Gets the {@link LegacySQLTypeName} for the object's type.
-     *
-     * @param obj The object to retrieve a type name for.
-     * @return The {@link LegacySQLTypeName} which maps to the Java type of the object.
-     */
-    private LegacySQLTypeName getLegacyFieldType(Object obj) {
-      if (obj instanceof String) {
-        return LegacySQLTypeName.STRING;
-      } else if (obj instanceof Integer) {
-        return LegacySQLTypeName.INTEGER;
-      } else if (obj instanceof Long) {
-        return LegacySQLTypeName.INTEGER;
-      } else if (obj instanceof BigDecimal) {
-        return LegacySQLTypeName.NUMERIC;
-      } else if (obj instanceof Double) {
-        return LegacySQLTypeName.NUMERIC;
-      } else if (obj instanceof Float) {
-        return LegacySQLTypeName.FLOAT;
-      } else if (obj instanceof Boolean) {
-        return LegacySQLTypeName.BOOLEAN;
-      } else if (obj instanceof Byte) {
-        return LegacySQLTypeName.BYTES;
-      } else if (obj instanceof Date) {
-        return LegacySQLTypeName.DATETIME;
-      }
-
-      return LegacySQLTypeName.STRING;
+      return additionalFields;
     }
 
     /**

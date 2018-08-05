@@ -19,18 +19,27 @@
 package com.google.cloud.pso.avro;
 
 import com.google.api.services.bigquery.model.TableRow;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
+import com.google.api.services.bigquery.model.TableSchema;
+import com.google.cloud.pso.bigquery.BigQueryAvroUtils;
+import com.google.cloud.pso.bigquery.TableRowWithSchema;
 import org.apache.avro.file.DataFileReader;
 import org.apache.avro.file.SeekableByteArrayInput;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumReader;
-import org.apache.beam.sdk.io.gcp.bigquery.TableRowJsonCoder;
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubMessage;
 import org.apache.beam.sdk.transforms.DoFn;
 
-public class AvroBytesToTableRow extends DoFn<PubsubMessage, TableRow> {
+/**
+ * A {@link DoFn} that converts a {@link PubsubMessage} with an Avro payload to a {@link
+ * TableRowWithSchema} object.
+ *
+ * <p>The schema for the {@link TableRow} is inferred by inspecting and converting the Avro message
+ * schema. By default, this function will set the namespace as the record's associated output table
+ * for dynamic routing within the {@link org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO} sink using
+ * {@link org.apache.beam.sdk.io.gcp.bigquery.DynamicDestinations}.
+ */
+public class PubsubAvroToTableRow extends DoFn<PubsubMessage, TableRowWithSchema> {
 
   @ProcessElement
   public void processElement(ProcessContext context) {
@@ -43,21 +52,20 @@ public class AvroBytesToTableRow extends DoFn<PubsubMessage, TableRow> {
 
       while (dataFileReader.hasNext()) {
         GenericRecord record = dataFileReader.next();
-        context.output(convertGenericRecordToTableRow(record));
+
+        String tableName = record.getSchema().getNamespace();
+        TableSchema tableSchema = BigQueryAvroUtils.getTableSchema(record.getSchema());
+        TableRow tableRow = BigQueryAvroUtils.getTableRow(record);
+
+        context.output(
+            TableRowWithSchema.newBuilder()
+                .setTableName(tableName)
+                .setTableSchema(tableSchema)
+                .setTableRow(tableRow)
+                .build());
       }
     } catch (Exception e) {
-      // Failed to decode record
+      // TODO: Use a dead-letter strategy for records which fail to parse.
     }
-  }
-
-  /**
-   * TODO: This is a complete non-performant hack. Figure out a better way.
-   *
-   * @param record
-   * @return
-   */
-  private static TableRow convertGenericRecordToTableRow(GenericRecord record)
-      throws IOException {
-    return TableRowJsonCoder.of().decode(new ByteArrayInputStream(record.toString().getBytes()));
   }
 }

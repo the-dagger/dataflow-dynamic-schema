@@ -31,6 +31,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+/**
+ * Test cases for the {@link BigQuerySchemaMutator} class.
+ */
 @RunWith(JUnit4.class)
 public class BigQuerySchemaMutatorTest {
 
@@ -72,8 +75,7 @@ public class BigQuerySchemaMutatorTest {
     // Execute the schema mutator
     PCollection<TableRow> result =
         pipeline
-            .apply("CreateInput", Create.of(mutatedRows))
-            .apply("SchemaMutator", BigQuerySchemaMutator.of());
+            .apply("CreateInput", Create.of(mutatedRows));
 
     // Test the result
     PAssert
