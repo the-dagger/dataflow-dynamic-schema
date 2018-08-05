@@ -14,7 +14,7 @@
  * the License.
  */
 
-package com.google.cloud.pso.avro;
+package com.google.cloud.pso.dofn;
 
 import com.google.api.services.bigquery.model.TableRow;
 import com.google.api.services.bigquery.model.TableSchema;
@@ -38,7 +38,7 @@ import org.apache.beam.sdk.values.TupleTag;
  * for dynamic routing within the {@link org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO} sink using
  * {@link org.apache.beam.sdk.io.gcp.bigquery.DynamicDestinations}.
  */
-public class PubsubAvroToTableRow extends DoFn<PubsubMessage, TableRowWithSchema> {
+public class PubsubAvroToTableRowFn extends DoFn<PubsubMessage, TableRowWithSchema> {
 
   public static final TupleTag<TableRowWithSchema> MAIN_OUT = new TupleTag<TableRowWithSchema>(){};
   public static final TupleTag<PubsubMessage> DEADLETTER_OUT = new TupleTag<PubsubMessage>(){};

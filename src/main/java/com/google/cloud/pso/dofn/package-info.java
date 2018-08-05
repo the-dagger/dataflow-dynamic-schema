@@ -15,6 +15,6 @@
  */
 
 /**
- * This package contains all utility classes related to processing Avro data.
+ * This package contains all DoFns.
  */
-package com.google.cloud.pso.avro;
+package com.google.cloud.pso.dofn;

@@ -16,7 +16,7 @@
 
 package com.google.cloud.pso.pipeline;
 
-import com.google.cloud.pso.avro.PubsubAvroToTableRow;
+import com.google.cloud.pso.dofn.PubsubAvroToTableRowFn;
 import com.google.cloud.pso.bigquery.BigQuerySchemaMutator;
 import com.google.cloud.pso.bigquery.TableRowWithSchema;
 import java.util.Map;
@@ -94,13 +94,13 @@ public class DynamicSchemaPipeline {
                 PubsubIO
                     .readMessagesWithAttributes()
                     .fromSubscription(options.getSubscription()))
-            .apply("PubsubAvroToTableRow",
+            .apply("PubsubAvroToTableRowFn",
                 ParDo
-                    .of(new PubsubAvroToTableRow())
+                    .of(new PubsubAvroToTableRowFn())
                     .withOutputTags(
-                        PubsubAvroToTableRow.MAIN_OUT,
-                        TupleTagList.of(PubsubAvroToTableRow.DEADLETTER_OUT)))
-            .get(PubsubAvroToTableRow.MAIN_OUT)
+                        PubsubAvroToTableRowFn.MAIN_OUT,
+                        TupleTagList.of(PubsubAvroToTableRowFn.DEADLETTER_OUT)))
+            .get(PubsubAvroToTableRowFn.MAIN_OUT)
             .apply("1mWindow", Window.into(FixedWindows.of(Duration.standardMinutes(1L))));
 
 
