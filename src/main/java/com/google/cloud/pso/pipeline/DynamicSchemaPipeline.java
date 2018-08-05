@@ -25,6 +25,7 @@ import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO;
 import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO.Write;
 import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO.Write.CreateDisposition;
 import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO.Write.WriteDisposition;
+import org.apache.beam.sdk.io.gcp.bigquery.InsertRetryPolicy;
 import org.apache.beam.sdk.io.gcp.bigquery.WriteResult;
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubIO;
 import org.apache.beam.sdk.options.Description;
@@ -75,7 +76,8 @@ public class DynamicSchemaPipeline {
         BigQueryIO.writeTableRows()
             .to(options.getTable())
             .withCreateDisposition(CreateDisposition.CREATE_NEVER)
-            .withWriteDisposition(WriteDisposition.WRITE_APPEND);
+            .withWriteDisposition(WriteDisposition.WRITE_APPEND)
+            .withFailedInsertRetryPolicy(InsertRetryPolicy.retryTransientErrors());
 
     // Create the pipeline
     Pipeline pipeline = Pipeline.create(options);
@@ -92,7 +94,7 @@ public class DynamicSchemaPipeline {
     // Retrieve the failed inserts and attempt to re-write the records
     writeResult
         .getFailedInserts()
-        .apply("MutateSchema", ParDo.of(new BigQuerySchemaMutator()))
+        .apply("MutateSchema", BigQuerySchemaMutator.of())
         .apply("WriteMutatedRecords", bigqueryWriter);
 
     return pipeline.run();
