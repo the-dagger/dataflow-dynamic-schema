@@ -15,6 +15,6 @@
  */
 
 /**
- * This package contains all DoFns.
+ * This package contains all coders needed to execute the pipelines.
  */
-package com.google.cloud.pso.dofn;
+package com.google.cloud.pso.coder;

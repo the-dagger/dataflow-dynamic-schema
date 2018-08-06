@@ -22,7 +22,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.google.cloud.pso</groupId>
-  <artifactId>dataflow-dyanmic-schema</artifactId>
+  <artifactId>dataflow-dynamic-schema</artifactId>
   <version>1.0-SNAPSHOT</version>
 
   <inceptionYear>2018</inceptionYear>
@@ -31,7 +31,7 @@
     <url>https://cloud.google.com</url>
   </organization>
 
-  <name>dataflow-dyanmic-schema</name>
+  <name>dataflow-dynamic-schema</name>
   <!-- FIXME change it to the project's website -->
   <url>http://www.example.com</url>
 
@@ -245,7 +245,7 @@
             <configuration>
               <!-- Ignore runtime-only dependencies in analysis -->
               <ignoreNonCompile>true</ignoreNonCompile>
-              <failOnWarning>true</failOnWarning>
+              <failOnWarning>false</failOnWarning>
             </configuration>
           </execution>
         </executions>
@@ -258,6 +258,9 @@
         <configuration>
           <source>${java.version}</source>
           <target>${java.version}</target>
+          <showWarnings>true</showWarnings>
+          <showDeprecation>true</showDeprecation>
+          <encoding>UTF-8</encoding>
         </configuration>
       </plugin>
 
@@ -470,10 +473,11 @@
         <executions>
           <!-- Ensures that Spotbugs inspects source code when project is compiled. -->
           <execution>
-            <id>analyze-compile</id>
-            <phase>compile</phase>
+            <id>analyze-bugs</id>
+            <phase>verify</phase>
             <goals>
               <goal>check</goal>
+              <goal>spotbugs</goal>
             </goals>
           </execution>
         </executions>
@@ -492,24 +496,32 @@
         <artifactId>clover-maven-plugin</artifactId>
         <version>${maven-clover-plugin.version}</version>
         <configuration>
-          <targetPercentage>0%</targetPercentage>
+          <targetPercentage>80%</targetPercentage>
+          <includesTestSourceRoots>false</includesTestSourceRoots>
+          <generateHtml>true</generateHtml>
+          <generatePdf>true</generatePdf>
+          <includes>
+            <include>**/*.java</include>
+          </includes>
           <excludes>
-            <exclude>**/*Test/java</exclude>
+            <exclude>**/*Test.java</exclude>
+            <exclude>**/generated/**</exclude>
           </excludes>
         </configuration>
         <executions>
           <execution>
-            <id>post-clean</id>
-            <phase>clean</phase>
+            <id>instrument-standard</id>
+            <phase>verify</phase>
             <goals>
-              <goal>setup</goal>
+              <goal>instrument</goal>
+              <goal>check</goal>
             </goals>
           </execution>
           <execution>
-            <id>post-unit-test</id>
-            <phase>test</phase>
+            <id>instrument-site</id>
+            <phase>pre-site</phase>
             <goals>
-              <goal>check</goal>
+              <goal>instrument</goal>
             </goals>
           </execution>
         </executions>
@@ -528,7 +540,7 @@
         <executions>
           <execution>
             <id>analyze-dependency-updates</id>
-            <phase>package</phase>
+            <phase>verify</phase>
             <goals>
               <goal>display-dependency-updates</goal>
             </goals>

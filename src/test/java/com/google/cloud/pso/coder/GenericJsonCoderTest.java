@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
+package com.google.cloud.pso.coder;
+
 /**
- * This package contains all DoFns.
+ * Tests for the {@link GenericJsonCoder} class.
  */
-package com.google.cloud.pso.dofn;
+public class GenericJsonCoderTest {
+
+}

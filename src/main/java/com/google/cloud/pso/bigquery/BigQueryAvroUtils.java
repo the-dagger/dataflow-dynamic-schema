@@ -1,17 +1,17 @@
 /*
  * Copyright (C) 2018 Google Inc.
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License. You may obtain a copy of
- * the License at
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations under
- * the License.
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.google.cloud.pso.bigquery;
@@ -82,10 +82,13 @@ public class BigQueryAvroUtils {
             field -> {
               Type type = field.schema().getType();
               switch (type) {
+                case MAP:
                 case RECORD:
                   row.set(field.name(), getTableCell((GenericRecord) record.get(field.pos())));
                   break;
                 case INT:
+                  row.set(field.name(), ((Number) record.get(field.pos())).intValue());
+                  break;
                 case LONG:
                   row.set(field.name(), ((Number) record.get(field.pos())).longValue());
                   break;
@@ -94,6 +97,8 @@ public class BigQueryAvroUtils {
                   row.set(field.name(), ((Number) record.get(field.pos())).doubleValue());
                   break;
                 case BOOLEAN:
+                case FIXED:
+                case BYTES:
                   row.set(field.name(), record.get(field.pos()));
                   break;
                 default:
@@ -115,9 +120,10 @@ public class BigQueryAvroUtils {
               TableFieldSchema column = new TableFieldSchema().setName(field.name());
               Type type = field.schema().getType();
               switch (type) {
+                case MAP:
                 case RECORD:
                   column.setType("RECORD");
-                  column.setFields(getFieldsSchema(fields));
+                  column.setFields(getFieldsSchema(field.schema().getFields()));
                   break;
                 case INT:
                 case LONG:
@@ -127,8 +133,14 @@ public class BigQueryAvroUtils {
                   column.setType("BOOLEAN");
                   break;
                 case FLOAT:
-                case DOUBLE:
                   column.setType("FLOAT");
+                  break;
+                case DOUBLE:
+                  column.setType("NUMERIC");
+                  break;
+                case FIXED:
+                case BYTES:
+                  column.setType("BYTES");
                   break;
                 default:
                   column.setType("STRING");

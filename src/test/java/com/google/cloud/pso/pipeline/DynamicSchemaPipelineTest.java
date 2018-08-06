@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
+package com.google.cloud.pso.pipeline;
+
 /**
- * This package contains all DoFns.
+ * Tests for the {@link DynamicSchemaPipeline} class.
  */
-package com.google.cloud.pso.dofn;
+public class DynamicSchemaPipelineTest {
+
+}
