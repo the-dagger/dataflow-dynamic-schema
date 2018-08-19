@@ -22,6 +22,8 @@ import com.google.api.services.bigquery.model.TableSchema;
 /**
  * The {@link TableRowWithSchema} class provides a wrapper around a {@link TableRow} to maintain
  * additional metadata information about the table to which the row belongs and that table's schema.
+ *
+ * TODO: Convert to AutoValue when a coder for AutoValue types exists within Beam.
  */
 public final class TableRowWithSchema {
 
